@@ -1,0 +1,95 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="gf-light">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=1120, initial-scale=1">
+  <style>{{ styles|safe }}</style>
+</head>
+<body>
+  <div class="status-poster" style="--poster-background: url('{{ background|safe }}')">
+    <div class="site-shell">
+      <nav class="site-nav" aria-label="YourTJ">
+        <a href="/" class="brand" aria-label="YourTJ Status">
+          <img class="brand-mark" src="{{ assets.logo|safe }}" alt="" width="44" height="44">
+          <span class="brand-copy">YourTJ Status</span>
+        </a>
+      </nav>
+
+      <main>
+        <div class="status-page">
+          <header class="gf-page-header">
+            <div class="gf-page-header-copy">
+              <h1><span class="gf-page-header-title">运行状态</span></h1>
+              <p>YourTJ 服务可用性、访问概况与服务器运行数据。</p>
+            </div>
+          </header>
+
+          <section class="status-hero" aria-labelledby="status-signal">
+            <div class="status-hero-main">
+              <div class="status-signal-label"><div class="status-signal-copy"><div class="status-signal-heading">
+                <span class="status-signal-icon is-{{ signal.tone }}">{{ icon(signal.icon, 30, 1.8)|safe }}</span>
+                <h2 id="status-signal">{{ signal.text }}</h2>
+              </div><p>可用性由独立监控检测；资源数据来自服务器探针。</p></div></div>
+              <p class="status-live-label">{{ icon('clock', 14, 1.8)|safe }}每 30 秒读取快照</p>
+            </div>
+            <div class="status-source-rail" role="list" aria-label="数据来自">
+              {% for source in sources %}
+              <div class="status-source-chip {{ source.class_name }}" role="listitem">
+                <span class="source-logo-ring {{ source.class_name }} brand-{{ source.key }}"><img src="{{ source.logo|safe }}" alt="{{ source.name }} logo"></span>
+                <b>{{ source.name }}</b><span>{{ source.text }}</span>
+              </div>
+              {% endfor %}
+            </div>
+          </section>
+
+          <section class="status-panel uptime-section" aria-labelledby="uptime-title">
+            <div class="status-panel-heading uptime-heading"><div><h2 id="uptime-title">服务可用性</h2><p>独立监控服务提供的可用性与响应时间。</p></div>{% if uptime_url %}<a class="uptime-external" href="{{ uptime_url }}">查看独立监控页{{ icon('arrow-up-right', 14, 1.8)|safe }}</a>{% endif %}</div>
+            {% if uptime_notice %}<p class="uptime-notice">{{ uptime_notice }}</p>{% endif %}
+            <div class="uptime-monitors">
+              {% for monitor in monitors %}
+              <article class="uptime-monitor">
+                <div class="monitor-heading"><div><span class="monitor-source-logo state-{{ monitor.state }}"><img src="{{ assets.uptime|safe }}" alt="Uptime Kuma logo"></span><h3>{{ monitor.name }}</h3><span class="monitor-type">{{ monitor.type }}</span></div><span class="monitor-state check-{{ monitor.state }}">{{ monitor.state_text }}</span></div>
+                <div class="uptime-metrics"><div><p>近 24 小时可用率</p><strong class="uptime-percentage">{{ monitor.uptime }}</strong><small>按已采集数据计算，统计窗口可能不足 24 小时。</small></div><div><p>最近响应</p><strong class="uptime-ping">{{ monitor.ping }}</strong><small>检测于 {{ monitor.check_time }}</small></div></div>
+                <div class="heartbeat-history"><div class="heartbeat-strip" aria-label="最近 {{ monitor.history|length }} 次检测">{{ monitor.heartbeats|safe }}</div><div class="heartbeat-footer"><div class="heartbeat-caption"><span>最近 {{ monitor.history|length }} 次检测</span><span>{{ monitor.history_start }} - {{ monitor.history_end }}</span></div></div></div>
+              </article>
+              {% endfor %}
+            </div>
+            {% if not monitors %}<p class="uptime-no-checks">暂无公开监控项</p>{% endif %}
+            <div class="status-panel-source status-source uptime-source"><span>数据来自 <b>Uptime Kuma</b><span class="source-badge {{ uptime_badge }}">{{ uptime_source_text }}</span></span><time>更新于 {{ uptime_fetched }}</time></div>
+          </section>
+
+          <section class="status-panel status-traffic" aria-labelledby="traffic-title">
+            <div class="status-panel-heading"><div><h2 id="traffic-title">访问概况</h2><p>汇总展示访客、浏览量和最近采集的活跃情况。</p></div><div class="status-range" role="group" aria-label="访问统计周期"><button type="button" aria-pressed="true">近 24 小时</button><button type="button" aria-pressed="false">近 7 天</button><button type="button" aria-pressed="false">近 30 天</button></div></div>
+            {% if traffic_notice %}<p class="status-notice">{{ traffic_notice }}</p>{% endif %}
+            <div class="status-traffic-grid">
+              <div class="status-metric"><div class="metric-label">{{ icon('users', 16, 1.7)|safe }}独立访客</div><strong>{{ traffic.visitors }}</strong><span class="metric-caption">近 24 小时</span></div>
+              <div class="status-metric"><div class="metric-label">{{ icon('globe', 16, 1.7)|safe }}页面浏览</div><strong>{{ traffic.pageviews }}</strong><span class="metric-caption">访问次数 <b>{{ traffic.visits }}</b></span></div>
+              <div class="status-metric metric-active"><div class="metric-label">{{ icon('radio', 16, 1.7)|safe }}最近一次采集时在线</div><strong>{{ traffic.active_visitors }}</strong><span class="metric-caption">最近采集时，过去 5 分钟的独立访客</span></div>
+            </div>
+            <div class="status-chart-panel"><div class="chart-heading"><h3>访问趋势</h3><div class="status-legend"><span><i class="legend-views"></i>页面浏览</span><span><i class="legend-visitors"></i>独立访客</span></div></div>{{ traffic_chart|safe }}<div class="status-traffic-footer"><p>访客按时间段去重，各段相加不等于总访客数。</p><dl><div><dt>跳出率</dt><dd>{{ traffic.bounce }}</dd></div><div><dt>平均访问时长</dt><dd>{{ traffic.duration }}</dd></div></dl></div></div>
+            {% if traffic.partial %}<p class="status-probe-note">部分指标暂不可用，其他数据仍可查看。</p>{% endif %}
+            <div class="status-panel-source status-source"><span>数据来自 <b>Umami</b><span class="source-badge {{ traffic.badge }}">{{ traffic.source_text }}</span></span><time>更新于 {{ traffic.fetched }}</time></div>
+          </section>
+
+          <section class="status-panel status-infra" aria-labelledby="infra-title">
+            <div class="status-panel-heading"><div><h2 id="infra-title">服务器资源</h2><p>CPU、内存、磁盘与网络的当前用量和历史趋势。</p></div><span class="status-node-tag"><span>{{ server.region }}</span>{{ server.name }}</span></div>
+            {% if server.notice %}<p class="status-notice">{{ server.notice }}</p>{% endif %}
+            <div class="status-resource-grid">
+              {% for resource in resources %}
+              <div class="status-resource"><div class="metric-label">{{ icon(resource.icon, 16, 1.7)|safe }}{{ resource.label }}</div><strong>{{ resource.value }}</strong><div class="resource-track" role="meter"><span style="width: {{ resource.amount }}%"{% if resource.high %} class="is-high"{% endif %}></span></div><p>{{ resource.detail }}</p></div>
+              {% endfor %}
+              <div class="status-resource resource-network"><div class="metric-label">{{ icon('wifi', 16, 1.7)|safe }}实时网络</div><div class="network-reading">{{ icon('arrow-up', 15, 1.8)|safe }}<span>上传</span><b>{{ server.network_up }}<small>/s</small></b></div><div class="network-reading">{{ icon('arrow-down', 15, 1.8)|safe }}<span>下载</span><b>{{ server.network_down }}<small>/s</small></b></div></div>
+            </div>
+            <div class="status-chart-panel resource-chart-panel"><div class="chart-heading"><div class="chart-title"><h3>资源趋势</h3><div class="status-legend"><span><i class="legend-views"></i>CPU</span><span><i class="legend-visitors"></i>内存使用</span></div></div><div class="status-range status-resource-range" role="group" aria-label="资源趋势时间范围"><button type="button" aria-pressed="true">1 小时</button><button type="button" aria-pressed="false">6 小时</button><button type="button" aria-pressed="false">1 天</button><button type="button" aria-pressed="false">7 天</button></div></div>{{ resource_chart|safe }}</div>
+            <div class="status-host-meta">{{ icon('clock', 14, 1.8)|safe }}<span>主机连续运行 {{ server.uptime }}</span></div>
+            {% if server.history_stale %}<p class="status-notice">历史数据暂未更新</p>{% endif %}
+            <p class="status-probe-note">历史数据未提供容量时，内存使用率按当前容量折算。</p>
+            <div class="status-panel-source status-source"><span>数据来自 <b>Komari</b><span class="source-badge {{ server.badge }}">{{ server.source_text }}</span></span><time>探针采样于 {{ server.observed_at }}</time></div>
+          </section>
+          <footer class="status-footer">© {{ year }} YourTJ Community | 公开统计数据</footer>
+        </div>
+      </main>
+    </div>
+  </div>
+</body>
+</html>

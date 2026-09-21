@@ -1,0 +1,44 @@
+{
+  "api_url": {
+    "description": "YourTJ Status API",
+    "type": "string",
+    "default": "https://status.yourtj.de/api/status"
+  },
+  "request_timeout": {
+    "description": "状态请求超时（秒）",
+    "type": "int",
+    "default": 15
+  },
+  "background": {
+    "description": "海报背景",
+    "type": "object",
+    "items": {
+      "bg_provider": {
+        "description": "背景来源",
+        "type": "string",
+        "default": "loli",
+        "options": ["loli", "local", "none"]
+      },
+      "bg_fallback_chain": {
+        "description": "背景回退顺序",
+        "type": "string",
+        "default": "local"
+      },
+      "bg_local_path": {
+        "description": "本地背景文件或目录",
+        "type": "string",
+        "default": ""
+      },
+      "bg_req_timeout": {
+        "description": "背景请求超时（秒）",
+        "type": "int",
+        "default": 10
+      },
+      "bg_proxy": {
+        "description": "背景请求代理",
+        "type": "string",
+        "default": ""
+      }
+    }
+  }
+}

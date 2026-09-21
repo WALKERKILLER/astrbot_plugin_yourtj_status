@@ -1,0 +1,7 @@
+name: astrbot_plugin_yourtj_status
+display_name: YourTJ Status
+desc: 获取 YourTJ 社区实时运行状态并生成状态海报。
+version: v1.0.0
+author: YourTJ
+repo: https://github.com/WALKERKILLER/astrbot_plugin_yourtj_status
+astrbot_version: ">=4.16"
