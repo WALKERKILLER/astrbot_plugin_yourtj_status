@@ -7,7 +7,8 @@
 - 请求 `https://status.yourtj.de/api/status` 获取实时状态。
 - 通过 AstrBot HTML + Jinja2 文转图能力生成 JPEG 海报。
 - 沿用 `astrbot_plugin_picstatus` 的 loliapi 背景图方式。
-- loliapi 失败时按配置回退到内置背景图。
+- loliapi 失败时自动重试，并通过后台预加载和最近成功背景降低单次请求失败影响。
+- loliapi 仍失败时按配置回退到本地或内置背景图。
 - 海报保留 YourTJ Status 原页面的结构、样式、文案和 logo 资源。
 
 ## 安装
@@ -26,6 +27,8 @@
 - `background.bg_fallback_chain`：背景失败后的回退顺序。
 - `background.bg_local_path`：本地背景文件或目录。
 - `background.bg_req_timeout`：背景请求超时秒数。
+- `background.bg_retry_count`：在线背景失败后的重试次数，默认 `2`。
+- `background.bg_preload_count`：后台预加载背景数量，默认 `1`。
 - `background.bg_proxy`：背景请求代理。
 
 ## 目录说明

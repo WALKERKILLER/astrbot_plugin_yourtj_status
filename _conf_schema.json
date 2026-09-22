@@ -34,6 +34,16 @@
         "type": "int",
         "default": 10
       },
+      "bg_retry_count": {
+        "description": "在线背景重试次数",
+        "type": "int",
+        "default": 2
+      },
+      "bg_preload_count": {
+        "description": "后台预加载背景数量",
+        "type": "int",
+        "default": 1
+      },
       "bg_proxy": {
         "description": "背景请求代理",
         "type": "string",
