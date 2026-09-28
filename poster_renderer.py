@@ -391,31 +391,155 @@ def _device_chart(data: dict[str, Any], width: int = 1040) -> str:
     chart_top, chart_bottom = 14.0, 306.0
     node_width, node_padding = 8.0, 30.0
     columns = [[node for node in nodes.values() if node["dimension"] == dimension] for dimension in dimensions]
-    positions: dict[str, dict[str, float]] = {}
-    for depth, column in enumerate(columns):
-        column.sort(key=lambda node: (-node["value"], node["id"]))
-        total = sum(node["value"] for node in column)
-        scale = max(0.5, (chart_bottom - chart_top - node_padding * max(0, len(column) - 1)) / total) if total else 0.5
-        y = chart_top
-        x = 102.0 + (width - 216.0) * depth / 2
-        for node in column:
-            height = max(1.0, node["value"] * scale)
-            positions[node["id"]] = {"x0": x, "x1": x + node_width, "y0": y, "y1": y + height, "depth": float(depth), "scale": scale}
-            y += height + node_padding
+    for index, link in enumerate(links.values()):
+        link["index"] = index
+        link["source_node"] = nodes[link["source"]]
+        link["target_node"] = nodes[link["target"]]
+    for node in nodes.values():
+        node["source_links"] = [link for link in links.values() if link["source_node"] is node]
+        node["target_links"] = [link for link in links.values() if link["target_node"] is node]
 
-    source_offsets = {node_id: 0.0 for node_id in nodes}
-    target_offsets = {node_id: 0.0 for node_id in nodes}
+    def link_target(link: dict[str, Any]) -> dict[str, Any]:
+        return link["target_node"]
+
+    def link_source(link: dict[str, Any]) -> dict[str, Any]:
+        return link["source_node"]
+
+    for column in columns:
+        column.sort(key=lambda node: (-node["value"], node["id"]))
+    max_nodes = max(len(column) for column in columns)
+    node_padding = min(node_padding, (chart_bottom - chart_top) / max(1, max_nodes - 1))
+    ky = min(
+        (chart_bottom - chart_top - (len(column) - 1) * node_padding) / sum(node["value"] for node in column)
+        for column in columns
+        if column and sum(node["value"] for node in column)
+    )
+    x0, x1 = 102.0, width - 114.0
+    x_step = (x1 - x0 - node_width) / (len(columns) - 1)
+    for depth, column in enumerate(columns):
+        y = chart_top
+        for node in column:
+            node["depth"] = depth
+            node["x0"] = x0 + depth * x_step
+            node["x1"] = node["x0"] + node_width
+            node["y0"] = y
+            node["y1"] = y + node["value"] * ky
+            for link in node["source_links"]:
+                link["width"] = link["value"] * ky
+            y = node["y1"] + node_padding
+        extra = (chart_bottom - y + node_padding) / (len(column) + 1)
+        for index, node in enumerate(column, 1):
+            node["y0"] += extra * index
+            node["y1"] += extra * index
+
+    for node in nodes.values():
+        node["source_links"].sort(key=lambda link: (link_target(link)["y0"], link["index"]))
+        node["target_links"].sort(key=lambda link: (link_source(link)["y0"], link["index"]))
+
+    def target_top(source: dict[str, Any], target: dict[str, Any]) -> float:
+        y = source["y0"] - (len(source["source_links"]) - 1) * node_padding / 2
+        for link in source["source_links"]:
+            if link_target(link) is target:
+                break
+            y += link["width"] + node_padding
+        for link in target["target_links"]:
+            if link_source(link) is source:
+                break
+            y -= link["width"]
+        return y
+
+    def source_top(source: dict[str, Any], target: dict[str, Any]) -> float:
+        y = target["y0"] - (len(target["target_links"]) - 1) * node_padding / 2
+        for link in target["target_links"]:
+            if link_source(link) is source:
+                break
+            y += link["width"] + node_padding
+        for link in source["source_links"]:
+            if link_target(link) is target:
+                break
+            y -= link["width"]
+        return y
+
+    def reorder_node_links(node: dict[str, Any]) -> None:
+        for link in node["target_links"]:
+            source = link_source(link)
+            source["source_links"].sort(key=lambda item: (link_target(item)["y0"], item["index"]))
+        for link in node["source_links"]:
+            target = link_target(link)
+            target["target_links"].sort(key=lambda item: (link_source(item)["y0"], item["index"]))
+
+    def resolve_collisions(column: list[dict[str, Any]], alpha: float) -> None:
+        middle = len(column) >> 1
+        subject = column[middle]
+
+        def bottom_to_top(limit: float, index: int) -> None:
+            for current in range(index, -1, -1):
+                node = column[current]
+                shift = (node["y1"] - limit) * alpha
+                if shift > 1e-6:
+                    node["y0"] -= shift
+                    node["y1"] -= shift
+                limit = node["y0"] - node_padding
+
+        def top_to_bottom(limit: float, index: int) -> None:
+            for current in range(index, len(column)):
+                node = column[current]
+                shift = (limit - node["y0"]) * alpha
+                if shift > 1e-6:
+                    node["y0"] += shift
+                    node["y1"] += shift
+                limit = node["y1"] + node_padding
+
+        bottom_to_top(subject["y0"] - node_padding, middle - 1)
+        top_to_bottom(subject["y1"] + node_padding, middle + 1)
+        bottom_to_top(chart_bottom, len(column) - 1)
+        top_to_bottom(chart_top, 0)
+
+    for iteration in range(6):
+        alpha = 0.99**iteration
+        beta = max(1 - alpha, (iteration + 1) / 6)
+        for index in range(1, len(columns)):
+            for target in columns[index]:
+                weighted = sum(
+                    target_top(link_source(link), target) * link["value"] * (target["depth"] - link_source(link)["depth"])
+                    for link in target["target_links"]
+                )
+                weight = sum(link["value"] * (target["depth"] - link_source(link)["depth"] ) for link in target["target_links"])
+                if weight > 0:
+                    shift = (weighted / weight - target["y0"]) * alpha
+                    target["y0"] += shift
+                    target["y1"] += shift
+                    reorder_node_links(target)
+            resolve_collisions(columns[index], beta)
+        for index in range(len(columns) - 2, -1, -1):
+            for source in columns[index]:
+                weighted = sum(
+                    source_top(source, link_target(link)) * link["value"] * (link_target(link)["depth"] - source["depth"])
+                    for link in source["source_links"]
+                )
+                weight = sum(link["value"] * (link_target(link)["depth"] - source["depth"]) for link in source["source_links"])
+                if weight > 0:
+                    shift = (weighted / weight - source["y0"]) * alpha
+                    source["y0"] += shift
+                    source["y1"] += shift
+                    reorder_node_links(source)
+            resolve_collisions(columns[index], beta)
+
+    for node in nodes.values():
+        y0 = node["y0"]
+        for link in node["source_links"]:
+            link["y0"] = y0 + link["width"] / 2
+            y0 += link["width"]
+        y1 = node["y0"]
+        for link in node["target_links"]:
+            link["y1"] = y1 + link["width"] / 2
+            y1 += link["width"]
+
     link_markup: list[str] = []
     for index, link in enumerate(sorted(links.values(), key=lambda item: item["id"])):
-        source = positions[link["source"]]
-        target = positions[link["target"]]
-        source_scale = source["scale"]
-        target_scale = target["scale"]
-        link_width = max(1.0, link["value"] * min(source_scale, target_scale))
-        source_y = source["y0"] + source_offsets[link["source"]] + link_width / 2
-        target_y = target["y0"] + target_offsets[link["target"]] + link_width / 2
-        source_offsets[link["source"]] += link_width
-        target_offsets[link["target"]] += link_width
+        source = link["source_node"]
+        target = link["target_node"]
+        source_y, target_y = link["y0"], link["y1"]
         middle = (source["x1"] + target["x0"]) / 2
         source_color = DEVICE_PALETTE.get(nodes[link["source"]]["category"], "#929cae")
         target_color = DEVICE_PALETTE.get(nodes[link["target"]]["category"], "#929cae")
@@ -426,12 +550,12 @@ def _device_chart(data: dict[str, Any], width: int = 1040) -> str:
         )
         name = f"{DEVICE_LABELS.get(nodes[link['source']]['category'], '其他')} → {DEVICE_LABELS.get(nodes[link['target']]['category'], '其他')}"
         link_markup.append(
-            f'<g class="device-flow" role="img" aria-label="{html_escape(name)}：{_number(link["value"])} 位访客"><path d="{path}" stroke="url(#{gradient_id})" stroke-width="{link_width:.2f}" class="flow-ribbon"/><path d="{path}" stroke="transparent" stroke-width="{max(link_width, 10):.2f}" class="flow-hit"/></g>'
+            f'<g class="device-flow" role="img" aria-label="{html_escape(name)}：{_number(link["value"])} 位访客"><path d="{path}" stroke="url(#{gradient_id})" stroke-width="{link["width"]:.2f}" class="flow-ribbon"/><path d="{path}" stroke="transparent" stroke-width="{max(link["width"], 10):.2f}" class="flow-hit"/></g>'
         )
 
     node_markup: list[str] = []
     for node in sorted(nodes.values(), key=lambda item: item["id"]):
-        position = positions[node["id"]]
+        position = node
         label = DEVICE_LABELS.get(node["category"], "其他")
         label_x = position["x0"] - 12 if position["depth"] == 0 else position["x1"] + 12
         anchor = "end" if position["depth"] == 0 else "start"
