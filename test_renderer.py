@@ -32,6 +32,8 @@ def test_renderer() -> None:
     assert "访客设备分布" in html
     assert 'class="device-sankey"' in html
     assert "手机" in html and "Windows" in html and "Chrome" in html
+    assert "悬停或聚焦节点与流线" not in html
+    assert 'class="device-detail"' not in html
     assert 'data:image/png;base64,' in html
     assert 'class="language-toggle"' not in html
     assert 'class="theme-toggle"' not in html

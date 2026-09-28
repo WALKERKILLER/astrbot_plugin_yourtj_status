@@ -565,7 +565,7 @@ def _device_chart(data: dict[str, Any], width: int = 1040) -> str:
 
     columns_markup = "".join(f"<span>{label}</span>" for label in ("设备", "操作系统", "客户端"))
     svg = f'<svg class="device-sankey" viewBox="0 0 {width} 320" role="group" aria-label="设备、操作系统与客户端的访客分布桑基图"><defs>{"".join(item for item in link_markup if item.startswith("<linearGradient") )}</defs>{"".join(item for item in link_markup if item.startswith("<g"))}{"".join(node_markup)}</svg>'
-    return f'<div class="device-chart"><div class="device-columns">{columns_markup}</div>{svg}<div class="device-detail"><span class="device-hint">悬停或聚焦节点与流线，查看人数与占比</span></div></div>'
+    return f'<div class="device-chart"><div class="device-columns">{columns_markup}</div>{svg}</div>'
 
 
 def _styles() -> str:
