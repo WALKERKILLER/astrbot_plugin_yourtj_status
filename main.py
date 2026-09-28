@@ -52,7 +52,7 @@ class YourTJStatusPlugin(Star):
             api_url = _api_url(self.config)
             timeout = _int_config(self.config, "request_timeout", 15)
             async with httpx.AsyncClient(follow_redirects=True, timeout=timeout) as client:
-                response = await client.get(api_url, params={"range": "24h", "serverRange": "1h"})
+                response = await client.get(api_url, params={"range": "24h", "serverRange": "1h", "deviceRange": "7d"})
                 response.raise_for_status()
                 payload = response.json()
             if payload.get("code") != 0 or not isinstance(payload.get("result"), dict):

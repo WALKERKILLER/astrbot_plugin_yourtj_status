@@ -5,6 +5,7 @@
 ## 功能
 
 - 请求 `https://status.yourtj.de/api/status` 获取实时状态。
+- 同步 YourTJ-Hub `dev` 分支的访客设备 API 与桑基图组件，海报展示设备、操作系统和客户端分布。
 - 通过 AstrBot HTML + Jinja2 文转图能力生成 JPEG 海报。
 - 沿用 `astrbot_plugin_picstatus` 的 loliapi 背景图方式。
 - loliapi 失败时自动重试，并通过后台预加载和最近成功背景降低单次请求失败影响。

@@ -6,6 +6,7 @@ import mimetypes
 import re
 import time
 from datetime import datetime, timezone
+from html import escape as html_escape
 from pathlib import Path
 from typing import Any
 
@@ -38,6 +39,50 @@ ICON_PATHS = {
     "sun": '<circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M4.93 19.07l1.41-1.41M17.66 6.34l1.41-1.41"/>',
     "users": '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/>',
     "wifi": '<path d="M5 13a10 10 0 0 1 14 0M8 16a6 6 0 0 1 8 0M11 19a2 2 0 0 1 2 0"/>',
+}
+
+
+DEVICE_LABELS = {
+    "yourtj-app": "YourTJ App",
+    "mobile": "手机",
+    "laptop": "笔记本",
+    "desktop": "台式机",
+    "tablet": "平板",
+    "other": "其他",
+    "unknown": "未识别",
+    "windows": "Windows",
+    "macos": "macOS",
+    "ios": "iOS",
+    "android": "Android",
+    "linux": "Linux",
+    "chromeos": "ChromeOS",
+    "chrome": "Chrome",
+    "edge": "Edge",
+    "safari": "Safari",
+    "firefox": "Firefox",
+    "webview": "内嵌浏览器",
+    "opera": "Opera",
+    "samsung": "Samsung Internet",
+}
+DEVICE_PALETTE = {
+    "yourtj-app": "#df795e",
+    "mobile": "#27a99a",
+    "laptop": "#5987db",
+    "desktop": "#c79953",
+    "tablet": "#a18bce",
+    "windows": "#5987db",
+    "android": "#27a99a",
+    "ios": "#8d8dcb",
+    "macos": "#b38a67",
+    "linux": "#bf9c43",
+    "chromeos": "#73a483",
+    "chrome": "#5987db",
+    "edge": "#27a99a",
+    "safari": "#8d8dcb",
+    "webview": "#b38a67",
+    "firefox": "#ca8659",
+    "other": "#929cae",
+    "unknown": "#a6abb5",
 }
 
 
@@ -292,6 +337,113 @@ def _resource_chart(server: dict[str, Any]) -> str:
     return f'<div class="resource-history"><div class="resource-axis resource-axis-cpu"><span>{cpu_labels[0]}</span><span>{cpu_labels[1]}</span><span>{cpu_labels[2]}</span></div><div class="resource-plot">{svg}<div class="resource-ticks"><span>{_short_date(datetime.fromtimestamp(start_ts, timezone.utc).isoformat())}</span><span>{_short_date(datetime.fromtimestamp(start_ts + span / 2, timezone.utc).isoformat())}</span><span>{_short_date(end.isoformat())}</span></div></div><div class="resource-axis resource-axis-memory"><span>{memory_labels[0]}</span><span>{memory_labels[1]}</span><span>{memory_labels[2]}</span></div></div>'
 
 
+def _device_chart(data: dict[str, Any], width: int = 1040) -> str:
+    rows = data.get("rows") or []
+    visitors = max(0.0, float(data.get("visitors") or 0))
+    dimensions = ("device", "os", "browser")
+    if not rows or not visitors:
+        return f'<div class="status-chart-empty device-empty">{icon("users", 26, 1.3)}<span>设备分布暂不可用</span></div>'
+
+    totals: dict[str, dict[str, float]] = {dimension: {} for dimension in dimensions}
+    normalized_rows: list[dict[str, Any]] = []
+    for row in rows:
+        try:
+            value = max(0.0, float(row.get("visitors") or 0))
+        except (AttributeError, TypeError, ValueError):
+            continue
+        if not value:
+            continue
+        normalized = {dimension: str(row.get(dimension) or "unknown") for dimension in dimensions}
+        normalized["visitors"] = value
+        normalized_rows.append(normalized)
+        for dimension in dimensions:
+            category = normalized[dimension]
+            totals[dimension][category] = totals[dimension].get(category, 0.0) + value
+    if not normalized_rows:
+        return f'<div class="status-chart-empty device-empty">{icon("users", 26, 1.3)}<span>设备分布暂不可用</span></div>'
+
+    keep: dict[str, set[str]] = {}
+    for dimension in dimensions:
+        ordered = sorted(totals[dimension].items(), key=lambda item: (-item[1], item[0]))
+        keep[dimension] = {
+            name
+            for index, (name, value) in enumerate(ordered)
+            if dimension == "device" or name in {"unknown", "yourtj-app"} or (index < 5 and value >= visitors * 0.015)
+        }
+
+    nodes: dict[str, dict[str, Any]] = {}
+    links: dict[str, dict[str, Any]] = {}
+    for row in normalized_rows:
+        ids = []
+        for dimension in dimensions:
+            category = row[dimension] if row[dimension] in keep[dimension] else "other"
+            node_id = f"{dimension}:{category}"
+            nodes.setdefault(node_id, {"id": node_id, "dimension": dimension, "category": category, "value": 0.0})
+            nodes[node_id]["value"] += row["visitors"]
+            ids.append(node_id)
+        for index in range(1, len(ids)):
+            link_id = f"{ids[index - 1]}/{ids[index]}"
+            link = links.setdefault(link_id, {"id": link_id, "source": ids[index - 1], "target": ids[index], "value": 0.0})
+            link["value"] += row["visitors"]
+    if not links:
+        return f'<div class="status-chart-empty device-empty">{icon("users", 26, 1.3)}<span>设备分布暂不可用</span></div>'
+
+    chart_top, chart_bottom = 14.0, 306.0
+    node_width, node_padding = 8.0, 30.0
+    columns = [[node for node in nodes.values() if node["dimension"] == dimension] for dimension in dimensions]
+    positions: dict[str, dict[str, float]] = {}
+    for depth, column in enumerate(columns):
+        column.sort(key=lambda node: (-node["value"], node["id"]))
+        total = sum(node["value"] for node in column)
+        scale = max(0.5, (chart_bottom - chart_top - node_padding * max(0, len(column) - 1)) / total) if total else 0.5
+        y = chart_top
+        x = 102.0 + (width - 216.0) * depth / 2
+        for node in column:
+            height = max(1.0, node["value"] * scale)
+            positions[node["id"]] = {"x0": x, "x1": x + node_width, "y0": y, "y1": y + height, "depth": float(depth), "scale": scale}
+            y += height + node_padding
+
+    source_offsets = {node_id: 0.0 for node_id in nodes}
+    target_offsets = {node_id: 0.0 for node_id in nodes}
+    link_markup: list[str] = []
+    for index, link in enumerate(sorted(links.values(), key=lambda item: item["id"])):
+        source = positions[link["source"]]
+        target = positions[link["target"]]
+        source_scale = source["scale"]
+        target_scale = target["scale"]
+        link_width = max(1.0, link["value"] * min(source_scale, target_scale))
+        source_y = source["y0"] + source_offsets[link["source"]] + link_width / 2
+        target_y = target["y0"] + target_offsets[link["target"]] + link_width / 2
+        source_offsets[link["source"]] += link_width
+        target_offsets[link["target"]] += link_width
+        middle = (source["x1"] + target["x0"]) / 2
+        source_color = DEVICE_PALETTE.get(nodes[link["source"]]["category"], "#929cae")
+        target_color = DEVICE_PALETTE.get(nodes[link["target"]]["category"], "#929cae")
+        path = f"M {source['x1']:.2f},{source_y:.2f} C {middle:.2f},{source_y:.2f} {middle:.2f},{target_y:.2f} {target['x0']:.2f},{target_y:.2f}"
+        gradient_id = f"device-gradient-{index}"
+        link_markup.append(
+            f'<linearGradient id="{gradient_id}" gradientUnits="userSpaceOnUse" x1="{source["x1"]:.2f}" x2="{target["x0"]:.2f}"><stop offset="0%" stop-color="{source_color}"/><stop offset="100%" stop-color="{target_color}"/></linearGradient>'
+        )
+        name = f"{DEVICE_LABELS.get(nodes[link['source']]['category'], '其他')} → {DEVICE_LABELS.get(nodes[link['target']]['category'], '其他')}"
+        link_markup.append(
+            f'<g class="device-flow" role="img" aria-label="{html_escape(name)}：{_number(link["value"])} 位访客"><path d="{path}" stroke="url(#{gradient_id})" stroke-width="{link_width:.2f}" class="flow-ribbon"/><path d="{path}" stroke="transparent" stroke-width="{max(link_width, 10):.2f}" class="flow-hit"/></g>'
+        )
+
+    node_markup: list[str] = []
+    for node in sorted(nodes.values(), key=lambda item: item["id"]):
+        position = positions[node["id"]]
+        label = DEVICE_LABELS.get(node["category"], "其他")
+        label_x = position["x0"] - 12 if position["depth"] == 0 else position["x1"] + 12
+        anchor = "end" if position["depth"] == 0 else "start"
+        node_markup.append(
+            f'<g class="device-node" role="img" aria-label="{html_escape(label)}：{_number(node["value"])} 位访客"><rect x="{position["x0"]:.2f}" y="{position["y0"]:.2f}" width="{node_width:.2f}" height="{max(1.0, position["y1"] - position["y0"]):.2f}" rx="2" fill="{DEVICE_PALETTE.get(node["category"], "#929cae")}"/><text x="{label_x:.2f}" y="{(position["y0"] + position["y1"]) / 2 - 2:.2f}" text-anchor="{anchor}">{html_escape(label)}<tspan x="{label_x:.2f}" dy="16" class="node-count">{_number(node["value"])} · {_percent(node["value"] / visitors * 100)}</tspan></text></g>'
+        )
+
+    columns_markup = "".join(f"<span>{label}</span>" for label in ("设备", "操作系统", "客户端"))
+    svg = f'<svg class="device-sankey" viewBox="0 0 {width} 320" role="group" aria-label="设备、操作系统与客户端的访客分布桑基图"><defs>{"".join(item for item in link_markup if item.startswith("<linearGradient") )}</defs>{"".join(item for item in link_markup if item.startswith("<g"))}{"".join(node_markup)}</svg>'
+    return f'<div class="device-chart"><div class="device-columns">{columns_markup}</div>{svg}<div class="device-detail"><span class="device-hint">悬停或聚焦节点与流线，查看人数与占比</span></div></div>'
+
+
 def _styles() -> str:
     files = [STATUS_ROOT / "src" / "styles" / "tokens.css", STATUS_ROOT / "src" / "styles" / "app.css"]
     files.extend([
@@ -300,6 +452,7 @@ def _styles() -> str:
         STATUS_ROOT / "src" / "components" / "StatusUptime.vue",
         STATUS_ROOT / "src" / "components" / "StatusTrafficChart.vue",
         STATUS_ROOT / "src" / "components" / "StatusResourceChart.vue",
+        STATUS_ROOT / "src" / "components" / "StatusDeviceChart.vue",
     ])
     chunks: list[str] = []
     for path in files:
@@ -335,13 +488,16 @@ def build_poster_html(snapshot: dict[str, Any], background: bytes, background_mi
     server_source = result.get("server") or {}
     traffic_source = result.get("traffic") or {}
     uptime_source = result.get("uptime") or {}
+    devices_source = result.get("devices") or {}
     server_state = _source_state(server_source, now)
     traffic_state = _source_state(traffic_source, now, 600)
     uptime_state = _source_state(uptime_source, now)
+    devices_state = _source_state(devices_source, now, 600)
     server = server_source.get("data") or {}
     current = server.get("current") or {}
     traffic_raw = traffic_source.get("data") or {}
     uptime_raw = uptime_source.get("data") or {}
+    devices_raw = devices_source.get("data") or {}
 
     def src_item(key: str, name: str, logo: str, state: str) -> dict[str, str]:
         source_class = "status-ok" if state == "ok" else "status-muted"
@@ -372,6 +528,20 @@ def build_poster_html(snapshot: dict[str, Any], background: bytes, background_mi
         "badge": _badge(traffic_state),
         "source_text": _source_text(traffic_state),
         "fetched": _date_time(traffic_source.get("fetchedAt")),
+    }
+    devices = {
+        "visitors": _number(devices_raw.get("visitors")),
+        "total_visitors": _number(devices_raw.get("totalVisitors")),
+        "partial": not bool(devices_raw.get("complete", True)),
+        "chart": _device_chart(devices_raw),
+        "badge": _badge(devices_state),
+        "source_text": _source_text(devices_state),
+        "fetched": _date_time(devices_source.get("fetchedAt")),
+        "notice": None if devices_state == "ok" else {
+            "stale": "数据源暂未更新，正在展示最近一次成功读取的记录。",
+            "unconfigured": "设备分布尚未连接。",
+        }.get(devices_state, "数据源暂不可用，稍后将自动重试。"),
+        "available": bool(devices_raw.get("visitors")),
     }
 
     monitors = []
@@ -420,6 +590,7 @@ def build_poster_html(snapshot: dict[str, Any], background: bytes, background_mi
         traffic=traffic,
         traffic_notice=None if traffic_state == "ok" else {"stale": "数据源暂未更新，正在展示最近一次成功读取的记录。", "unconfigured": "配置数据源后将在此显示实时数据。"}.get(traffic_state, "数据源暂不可用，稍后将自动重试。"),
         traffic_chart=_traffic_chart(traffic_raw),
+        devices=devices,
         server={
             "name": server_name,
             "region": server.get("region") or "",
